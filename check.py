@@ -679,4 +679,48 @@ with tempfile.TemporaryDirectory(prefix='perfect-note-markdown-check-') as direc
     note.window.destroy()
 print('PASS: Markdown styles, literal code/escapes, Unicode offsets, theme contrast, exact copy/save, selection, and undo/redo')
 
+with tempfile.TemporaryDirectory(prefix='perfect-note-word-delete-check-') as directory:
+    for number, (sample, cursor, expected) in enumerate((
+        ('one two three', 13, 'one two '),
+        ('one two   ', 10, 'one '),
+        ('one\ntwo', 7, 'one\n'),
+        ('one two', 5, 'one wo'),
+        ('one two', 0, 'one two'),
+        ('ÅÄÖ cafe\u0301', 9, 'ÅÄÖ '),
+    )):
+        note = create(Path(directory) / str(number))
+        note.insert_paste(sample)
+        before = copy.deepcopy(note.pastes)
+        note.buffer.place_cursor(note.buffer.get_iter_at_offset(cursor))
+        assert note.key_pressed(None, Gdk.KEY_BackSpace, 0, Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.LOCK_MASK)
+        assert note.text() == expected, (sample, note.text())
+        if sample != expected:
+            note.buffer.undo()
+            assert note.text() == sample and note.pastes == before
+            note.buffer.redo()
+            assert note.text() == expected
+        note.shutdown()
+        note.window.destroy()
+    note = create(Path(directory) / 'selection')
+    note.insert_paste('one two three')
+    before = copy.deepcopy(note.pastes)
+    note.select_paste(0)
+    note.select_word(1)
+    note.key_pressed(None, Gdk.KEY_BackSpace, 0, Gdk.ModifierType.ALT_MASK)
+    assert note.text() == 'one  three' and note.marked_paste is None
+    note.buffer.undo()
+    assert note.text() == 'one two three' and note.pastes == before
+    note.buffer.place_cursor(note.buffer.get_end_iter())
+    for expected in ('one two ', 'one ', ''):
+        note.key_pressed(None, Gdk.KEY_BackSpace, 0, Gdk.ModifierType.ALT_MASK)
+        assert note.text() == expected
+    note.buffer.undo()
+    note.editor.set_editable(False)
+    before = (note.text(), copy.deepcopy(note.pastes))
+    note.key_pressed(None, Gdk.KEY_BackSpace, 0, Gdk.ModifierType.ALT_MASK)
+    assert (note.text(), note.pastes) == before, 'word deletion changed read-only text'
+    note.shutdown()
+    note.window.destroy()
+print('PASS: Alt+Backspace words, whitespace, Unicode, selection, repeated deletion, undo/redo timestamps, and read-only text')
+
 assert not callback_errors, callback_errors

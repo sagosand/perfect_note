@@ -1,5 +1,5 @@
 window.perfect-note {
-    background: alpha(@pn_background, 0.88);
+    background: alpha(@pn_background, 0.898);
     color: @pn_foreground;
 }
 .perfect-note headerbar {

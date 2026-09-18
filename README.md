@@ -55,6 +55,7 @@ The configuration uses Omarchy's `o.bind` and `o.window` helpers and the current
 | Select words | Right / Left to enter a paste; arrows to move within it |
 | Copy a marked paste or word | Enter or Ctrl+C |
 | Remove selected text | Delete / Backspace; Ctrl+X to cut |
+| Delete the previous word (or selected text) | Alt+Backspace |
 | Undo / redo | Ctrl+Z / Ctrl+Shift+Z |
 | Back out / hide | Escape, one selection level at a time |
 | Insert a newline | Enter during normal editing |
@@ -85,7 +86,7 @@ Perfect Note follows your active Omarchy palette automatically, including light 
 
 It reads `~/.local/state/omarchy/current/theme/colors.toml`, with the older `~/.config/omarchy/current/theme/colors.toml` location as a fallback, respecting `XDG_STATE_HOME` and `XDG_CONFIG_HOME`. If no usable theme is available at startup, the original dark palette is used. A missing or invalid theme during a switch keeps the last working palette.
 
-The window is 638 x 845 pixels. Background transparency is defined in `style.css`: the window uses 88% opacity and the paper adds a light tint. Text, timestamps, and selection highlights remain opaque. This works without compositor blur. For a solid background, change the window alpha from `0.88` to `1.0`.
+The window is 638 x 845 pixels. Background transparency is defined in `style.css`: the window uses 89.8% opacity and the paper adds a light tint. Text, timestamps, and selection highlights remain opaque. This works without compositor blur. For a solid background, change the window alpha from `0.898` to `1.0`.
 
 To see CSS changes, stop the resident process and run the app again. On Arch, `pkill -TERM -f '[p]erfect_note.py'` requests a graceful save and exit; if saving fails, the app remains open and shows the error. Merely closing the window or rerunning the command toggles visibility and does not reload styles.
 

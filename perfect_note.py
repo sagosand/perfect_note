@@ -793,6 +793,10 @@ class PerfectNote(Gtk.Application):
             self.save()
             return True
         modifiers = state & (Gdk.ModifierType.SHIFT_MASK | Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.SUPER_MASK)
+        if keyval == Gdk.KEY_BackSpace and modifiers == Gdk.ModifierType.ALT_MASK:
+            self.clear_marking()
+            self.editor.emit("delete-from-cursor", Gtk.DeleteType.WORD_ENDS, -1)
+            return True
         if self.pastes and keyval in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab) and modifiers in (0, Gdk.ModifierType.SHIFT_MASK):
             self.cycle_paste(-1 if keyval == Gdk.KEY_ISO_Left_Tab or modifiers else 1)
             return True
