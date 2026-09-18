@@ -24,10 +24,10 @@ sys.excepthook = callback_exception
 
 instances = 0
 
-def create(root, application_id=None):
+def create(root, application_id=None, palette_paths=()):
     global instances
     instances += 1
-    app = PerfectNote(root, application_id or f'io.github.sagosand.PerfectNote.Check{instances}')
+    app = PerfectNote(root, application_id or f'io.github.sagosand.PerfectNote.Check{instances}', palette_paths=palette_paths)
     app.set_flags(Gio.ApplicationFlags.NON_UNIQUE)
     app.register(None)
     app.build_window()
@@ -272,6 +272,7 @@ with tempfile.TemporaryDirectory(prefix='perfect-note-stamps-check-') as directo
     assert selected() == 'alpha\n\nbeta', 'Left from the first word returns to the segment'
     nav.hide()
     for instance in (app, app2, app3, nav):
+        instance.stop_theme()
         instance.window.destroy()
 print('PASS: migration, one stamp per paste, Unicode, position tracking, delete/undo/redo, autosave, restart, backups, errors, segment/word navigation, copy, delete, click, vertical/wrapped navigation, Tab cycling')
 
@@ -536,7 +537,61 @@ with tempfile.TemporaryDirectory(prefix='perfect-note-audit-') as directory:
         if app.gutter_source:
             GLib.source_remove(app.gutter_source)
             app.gutter_source = 0
+        app.stop_theme()
         app.window.destroy()
 print(f'PASS: audit regressions, delayed clipboard, safe persistence, Unicode, grouped undo, and {cycles} randomized edit/undo/redo cycles')
+
+with tempfile.TemporaryDirectory(prefix='perfect-note-theme-check-') as directory:
+    from perfect_note import DEFAULT_PALETTE, read_theme, contrast
+    root = Path(directory)
+    theme = root / 'theme'
+    theme.mkdir()
+    colors = theme / 'colors.toml'
+    themed = create(root / 'note', palette_paths=(colors,))
+    assert themed.palette == DEFAULT_PALETTE
+    themed.insert_paste('The selected words and their timestamp must survive a theme switch.')
+    themed.select_paste(0)
+    themed.select_word(2)
+    before = (themed.text(), copy.deepcopy(themed.pastes), themed.marked_word,
+              tuple(i.get_offset() for i in themed.buffer.get_selection_bounds()), themed.history_position)
+    css_errors = []
+    themed.style_provider.connect('parsing-error', lambda provider, section, error: css_errors.append(error))
+    colors.write_text('background = "#181818"\nforeground = "#eeeeee"\naccent = "#55aaff"\n')
+    deadline = time.monotonic() + 4
+    while themed.palette['background'] != '#181818' and time.monotonic() < deadline:
+        settle()
+    assert themed.palette['background'] == '#181818', 'live theme timer did not reload while hidden'
+    assert not themed.window.get_visible()
+    theme.rename(root / 'old-theme')
+    themed.refresh_theme()
+    assert themed.palette['background'] == '#181818', 'missing theme discarded last good palette'
+    theme.mkdir()
+    colors.write_text('background = "#fafafa"\nforeground = "#202020"\nselection = "#222222"\nmuted = "#dddddd"\n')
+    deadline = time.monotonic() + 4
+    while themed.palette['background'] != '#fafafa' and time.monotonic() < deadline:
+        settle()
+    assert themed.palette['background'] == '#fafafa', 'directory replacement stopped live theme updates'
+    assert contrast(themed.palette['selected'], themed.palette['selection']) >= 4.5
+    assert contrast(themed.palette['muted'], themed.palette['background']) >= 4.5
+    after = (themed.text(), copy.deepcopy(themed.pastes), themed.marked_word,
+             tuple(i.get_offset() for i in themed.buffer.get_selection_bounds()), themed.history_position)
+    assert after == before, 'theme change disturbed editing state'
+    good = themed.palette.copy()
+    for content in ('background = [', 'background = "#333333"', 'background = "bad; }"\nforeground = "#eeeeee"'):
+        colors.write_text(content)
+        themed.refresh_theme()
+        assert themed.palette == good, 'invalid theme discarded last good palette'
+    colors.write_text('bg = "#101010"\nfg = "#f0f0f0"\ncolor4 = "#33aaff"\nselection_background = "#444444"\n')
+    themed.refresh_theme()
+    assert themed.palette['background'] == '#101010' and themed.palette['selection'] == '#444444'
+    legacy = root / 'legacy.toml'
+    colors.rename(legacy)
+    assert read_theme((colors, legacy))['foreground'] == '#f0f0f0'
+    assert not css_errors, css_errors
+    themed.shutdown()
+    assert themed.theme_source == 0 and themed.style_provider is None
+    assert themed.note_path.read_text() == before[0]
+    themed.window.destroy()
+print('PASS: live dark/light themes, directory replacement, legacy colors, contrast, invalid themes, and editing-state preservation')
 
 assert not callback_errors, callback_errors

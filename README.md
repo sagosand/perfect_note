@@ -19,7 +19,7 @@ git clone https://github.com/sagosand/perfect_note.git ~/Work/perfect_note
 /usr/bin/python3 ~/Work/perfect_note/perfect_note.py
 ```
 
-Run the same command again to show or hide the existing instance. Closing the window hides it; it starts on demand, so no login service is required. Use the system Python rather than an isolated virtual environment so it can find PyGObject.
+Run the same command again to show or hide the existing instance. Closing the window hides it; it starts on demand, so no login service is required. Requires Python 3.11 or newer. Use the system Python rather than an isolated virtual environment so it can find PyGObject.
 
 ### Super+N and the floating window
 
@@ -72,6 +72,10 @@ Edits save after 150 ms of inactivity and immediately when hiding. The complete 
 Saving is silent. If saving fails, the window stays open with an error; Ctrl+S retries. A normal termination request also waits for saving to succeed. Invalid saved data is left untouched and opened read-only; backup-write failures do not prevent reading a valid note. This is a text scratchpad, with no clipboard monitoring or cloud service.
 
 ## Appearance
+
+Perfect Note follows your active Omarchy palette automatically, including light themes. Background, text, timestamps, borders, cursor, and selections update within about two seconds of a theme change, even while the window is hidden. No hook or restart is needed. Selection text and small labels get a contrast fallback when needed.
+
+It reads `~/.local/state/omarchy/current/theme/colors.toml`, with the older `~/.config/omarchy/current/theme/colors.toml` location as a fallback, respecting `XDG_STATE_HOME` and `XDG_CONFIG_HOME`. If no usable theme is available at startup, the original dark palette is used. A missing or invalid theme during a switch keeps the last working palette.
 
 The window is 638 x 845 pixels. Background transparency is defined in `style.css`: the window uses 88% opacity and the paper adds a light tint. Text, timestamps, and selection highlights remain opaque. This works without compositor blur. For a solid background, change the window alpha from `0.88` to `1.0`.
 

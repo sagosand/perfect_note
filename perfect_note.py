@@ -5,6 +5,7 @@ import os
 import signal
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 from datetime import datetime
 
@@ -18,6 +19,78 @@ from gi.repository import Gdk, Gio, GLib, GLibUnix, Graphene, Gtk, Pango
 
 APP_ID = "io.github.sagosand.PerfectNote"
 DATA_DIR = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "perfect-note"
+
+
+DEFAULT_PALETTE = {
+    "background": "#202522", "foreground": "#eee9db", "surface": "#48523a",
+    "border": "#42483d", "muted": "#a4ad9a", "accent": "#d5e5b7",
+    "selection": "#526347", "selected": "#fff8e8", "error": "#edafa0",
+}
+
+
+def theme_paths():
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    return (state / "omarchy/current/theme/colors.toml", config / "omarchy/current/theme/colors.toml")
+
+
+def color_channels(color):
+    return tuple(int(color[index:index + 2], 16) / 255 for index in (1, 3, 5))
+
+
+def mix_color(start, end, amount):
+    return "#" + "".join(f"{round((a * (1 - amount) + b * amount) * 255):02x}" for a, b in zip(color_channels(start), color_channels(end)))
+
+
+def contrast(first, second):
+    def luminance(color):
+        channels = [value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4 for value in color_channels(color)]
+        return sum(value * weight for value, weight in zip(channels, (0.2126, 0.7152, 0.0722)))
+    a, b = sorted((luminance(first), luminance(second)))
+    return (b + 0.05) / (a + 0.05)
+
+
+def readable_color(color, background, fallback):
+    if contrast(color, background) >= 4.5:
+        return color
+    if contrast(fallback, background) >= 4.5:
+        return fallback
+    return max(("#000000", "#ffffff"), key=lambda value: contrast(value, background))
+
+
+def read_theme(paths):
+    for path in paths:
+        try:
+            raw = tomllib.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError):
+            return None
+        colors = {}
+        for key, value in raw.items():
+            color = Gdk.RGBA()
+            if isinstance(value, str) and color.parse(value):
+                colors[key] = "#" + "".join(f"{round(channel * 255):02x}" for channel in (color.red, color.green, color.blue))
+        def pick(*keys, default=None):
+            return next((colors[key] for key in keys if key in colors), default)
+        background = pick("background", "bg", "color0")
+        foreground = pick("foreground", "fg", "color7")
+        if not background or not foreground:
+            return None
+        accent = pick("accent", "blue", "color4", default=foreground)
+        selection = pick("selection", "selection_background", "color8", default=mix_color(background, accent, 0.35))
+        return {
+            "background": background,
+            "foreground": foreground,
+            "surface": pick("lighter_background", "lighter_bg", default=mix_color(background, foreground, 0.08)),
+            "border": mix_color(background, foreground, 0.22),
+            "muted": readable_color(pick("light_foreground", "light_fg", "muted", default=foreground), background, foreground),
+            "accent": readable_color(accent, background, foreground),
+            "selection": selection,
+            "selected": readable_color(pick("selection_foreground", default=foreground), selection, foreground),
+            "error": readable_color(pick("red", "color1", default=foreground), background, foreground),
+        }
+    return None
 
 
 def write_note(path, text):
@@ -60,21 +133,21 @@ class NoteView(Gtk.TextView):
             return
         visible = self.get_visible_rect()
         color = Gdk.RGBA()
-        color.parse("#42483d")
+        color.parse(self.owner.palette["border"])
         rect = Graphene.Rect()
         rect.init(62, visible.y, 1, visible.height)
         snapshot.append_color(color, rect)
-        color.parse("#a4ad9a")
+        color.parse(self.owner.palette["muted"])
         for paste, y in self.owner.stamp_layout():
             if y + 26 < visible.y or y > visible.y + visible.height:
                 continue
             if paste is self.owner.marked_paste:
-                color.parse("#526347")
+                color.parse(self.owner.palette["selection"])
                 rect.init(2, y - 2, 56, 26)
                 snapshot.append_color(color, rect)
-                color.parse("#fff8e8")
+                color.parse(self.owner.palette["selected"])
             else:
-                color.parse("#a4ad9a")
+                color.parse(self.owner.palette["muted"])
             date = datetime.fromisoformat(paste["at"])
             layout = self.create_pango_layout(date.strftime("%H:%M\n%d %b"))
             layout.set_font_description(Pango.FontDescription("Sans 7"))
@@ -89,8 +162,12 @@ class NoteView(Gtk.TextView):
 
 
 class PerfectNote(Gtk.Application):
-    def __init__(self, data_dir=DATA_DIR, application_id=APP_ID):
+    def __init__(self, data_dir=DATA_DIR, application_id=APP_ID, palette_paths=None):
         super().__init__(application_id=application_id, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
+        self.palette_paths = theme_paths() if palette_paths is None else palette_paths
+        self.palette = None
+        self.theme_source = 0
+        self.style_provider = None
         self.note_path = data_dir / "note.txt"
         self.state_path = data_dir / "note.json"
         self.pastes = []
@@ -115,7 +192,7 @@ class PerfectNote(Gtk.Application):
         self.save_source = 0
         self.dirty = False
         self.load_error = False
-        self.connect("shutdown", lambda *_: self.save())
+        self.connect("shutdown", self.shutdown)
 
     def do_activate(self):
         if self.window is None:
@@ -123,16 +200,42 @@ class PerfectNote(Gtk.Application):
         elif self.window.get_visible():
             self.hide()
             return
+        self.refresh_theme()
         self.prepare_line()
         self.window.present()
         self.editor.grab_focus()
         self.queue_gutter()
         GLib.idle_add(self.scroll_to_cursor)
 
+    def refresh_theme(self):
+        palette = read_theme(self.palette_paths) or self.palette or DEFAULT_PALETTE.copy()
+        if palette != self.palette:
+            definitions = "\n".join(f"@define-color pn_{key} {value};" for key, value in palette.items())
+            self.style_provider.load_from_data((definitions + "\n" + self.style_css).encode())
+            self.palette = palette
+            if self.window is not None:
+                self.editor.queue_draw()
+        return GLib.SOURCE_CONTINUE
+
+    def stop_theme(self):
+        if self.theme_source:
+            GLib.source_remove(self.theme_source)
+            self.theme_source = 0
+        if self.style_provider is not None:
+            Gtk.StyleContext.remove_provider_for_display(Gdk.Display.get_default(), self.style_provider)
+            self.style_provider = None
+
+    def shutdown(self, *_):
+        self.save()
+        self.stop_theme()
+
     def build_window(self):
-        provider = Gtk.CssProvider()
-        provider.load_from_path(str(Path(__file__).with_name("style.css")))
-        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self.style_css = Path(__file__).with_name("style.css").read_text(encoding="utf-8")
+        self.style_provider = Gtk.CssProvider()
+        self.refresh_theme()
+        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), self.style_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        # Omarchy replaces the theme directory, so re-open the path on each check.
+        self.theme_source = GLib.timeout_add_seconds(2, self.refresh_theme)
         self.window = Gtk.ApplicationWindow(application=self, title="Perfect Note")
         self.window.set_default_size(638, 845)
         self.window.set_size_request(420, 440)
