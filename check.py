@@ -198,6 +198,13 @@ with tempfile.TemporaryDirectory(prefix='perfect-note-stamps-check-') as directo
     # Render the temporary note so wrapped-line geometry is available.
     nav.window.present()
     settle()
+    for sample in ('CAPS LOCK ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'ÅÄÖ ÉÈÊ Ç Ñ Ü', 'Mixed case gjpqy'):
+        layout = nav.editor.create_pango_layout(sample)
+        ink, logical = layout.get_pixel_extents()
+        assert layout.get_baseline() % 1024 == 0, 'fractional text baseline'
+        assert ink.y >= logical.y - nav.editor.get_pixels_above_lines(), 'glyph tops exceed line padding'
+        assert ink.y + ink.height <= logical.y + logical.height + nav.editor.get_pixels_below_lines(), 'glyph bottoms exceed line padding'
+
     # Vertical arrows stay inside the segment and retain the horizontal column.
     nav.select_paste(1)
     key(Gdk.KEY_Right)

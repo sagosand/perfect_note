@@ -230,6 +230,11 @@ class PerfectNote(Gtk.Application):
         self.stop_theme()
 
     def build_window(self):
+        # Keep glyph bounds and text-line metrics on the same pixel grid.
+        settings = Gtk.Settings.get_default()
+        if settings.find_property("gtk-font-rendering") is not None:
+            settings.set_property("gtk-font-rendering", Gtk.FontRendering.MANUAL)
+        settings.set_property("gtk-hint-font-metrics", True)
         self.style_css = Path(__file__).with_name("style.css").read_text(encoding="utf-8")
         self.style_provider = Gtk.CssProvider()
         self.refresh_theme()
