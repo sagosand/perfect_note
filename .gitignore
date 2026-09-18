@@ -1,0 +1,8 @@
+backups/
+__pycache__/
+*.py[cod]
+*.log
+*.tmp
+note.json*
+note.txt*
+.venv/

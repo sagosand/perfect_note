@@ -1,0 +1,49 @@
+window.perfect-note {
+    background: rgba(32, 37, 34, 0.88);
+    color: #eee9db;
+}
+.perfect-note headerbar {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    min-height: 40px;
+    padding: 4px 12px;
+}
+.perfect-note .eyebrow {
+    color: #b8bbae;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 2px;
+}
+.perfect-note button {
+    background: #303730;
+    color: #dedfd2;
+    border: 1px solid #424b40;
+    border-radius: 8px;
+    padding: 7px 13px;
+    box-shadow: none;
+    text-shadow: none;
+    font-size: 12px;
+}
+.perfect-note button:hover { background: #414a40; }
+.perfect-note headerbar button { background: transparent; border: 0; padding: 5px; }
+.perfect-note .error { color: #edafa0; font-size: 12px; margin: 0 20px 10px; }
+.perfect-note .paper {
+    margin: 0 12px 12px;
+    border: 1px solid #42483d;
+    border-radius: 10px;
+    background: rgba(72, 82, 58, 0.16);
+}
+.perfect-note textview, .perfect-note textview text {
+    background: transparent;
+    color: #eee9db;
+    caret-color: #d5e5b7;
+    font-family: "Liberation Sans", sans-serif;
+    font-size: 16px;
+}
+.perfect-note textview text selection { background: #526347; color: #fff8e8; }
+.perfect-note .placeholder {
+    margin: 26px 24px 26px 94px;
+    color: #a4ad9a;
+    font-size: 16px;
+}
