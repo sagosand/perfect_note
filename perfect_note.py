@@ -16,6 +16,8 @@ gi.require_version("Gdk", "4.0")
 gi.require_version("Graphene", "1.0")
 from gi.repository import Gdk, Gio, GLib, GLibUnix, Graphene, Gtk, Pango
 
+from markdown_style import MarkdownStyler
+
 
 APP_ID = "io.github.sagosand.PerfectNote"
 DATA_DIR = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "perfect-note"
@@ -25,6 +27,8 @@ DEFAULT_PALETTE = {
     "background": "#202522", "foreground": "#eee9db", "surface": "#48523a",
     "border": "#42483d", "muted": "#a4ad9a", "accent": "#d5e5b7",
     "selection": "#526347", "selected": "#fff8e8", "error": "#edafa0",
+    "heading": "#c5d49b", "link": "#9dc9ce", "code": "#b8cf9b",
+    "marker": "#dfb789", "code_background": "#30372f",
 }
 
 
@@ -58,6 +62,15 @@ def readable_color(color, background, fallback):
     return max(("#000000", "#ffffff"), key=lambda value: contrast(value, background))
 
 
+def readable_tint(color, background):
+    target = max(("#000000", "#ffffff"), key=lambda value: contrast(value, background))
+    for step in range(21):
+        candidate = mix_color(color, target, step / 20)
+        if contrast(candidate, background) >= 5:
+            return candidate
+    return target
+
+
 def read_theme(paths):
     for path in paths:
         try:
@@ -79,6 +92,7 @@ def read_theme(paths):
             return None
         accent = pick("accent", "blue", "color4", default=foreground)
         selection = pick("selection", "selection_background", "color8", default=mix_color(background, accent, 0.35))
+        code_background = mix_color(background, foreground, 0.06)
         return {
             "background": background,
             "foreground": foreground,
@@ -89,6 +103,11 @@ def read_theme(paths):
             "selection": selection,
             "selected": readable_color(pick("selection_foreground", default=foreground), selection, foreground),
             "error": readable_color(pick("red", "color1", default=foreground), background, foreground),
+            "heading": readable_tint(accent, background),
+            "link": readable_tint(pick("cyan", "blue", "color6", "color4", default=accent), background),
+            "code": readable_tint(pick("green", "color2", default=accent), code_background),
+            "marker": readable_tint(pick("orange", "yellow", "color3", default=accent), background),
+            "code_background": code_background,
         }
     return None
 
@@ -166,6 +185,7 @@ class PerfectNote(Gtk.Application):
         super().__init__(application_id=application_id, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
         self.palette_paths = theme_paths() if palette_paths is None else palette_paths
         self.palette = None
+        self.markdown = None
         self.theme_source = 0
         self.style_provider = None
         self.note_path = data_dir / "note.txt"
@@ -213,6 +233,8 @@ class PerfectNote(Gtk.Application):
             definitions = "\n".join(f"@define-color pn_{key} {value};" for key, value in palette.items())
             self.style_provider.load_from_data((definitions + "\n" + self.style_css).encode())
             self.palette = palette
+            if self.markdown is not None:
+                self.markdown.update_palette(palette)
             if self.window is not None:
                 self.editor.queue_draw()
         return GLib.SOURCE_CONTINUE
@@ -226,6 +248,8 @@ class PerfectNote(Gtk.Application):
             self.style_provider = None
 
     def shutdown(self, *_):
+        if self.markdown is not None:
+            self.markdown.stop()
         self.save()
         self.stop_theme()
 
@@ -314,6 +338,7 @@ class PerfectNote(Gtk.Application):
         keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         keys.connect("key-pressed", self.key_pressed)
         self.window.add_controller(keys)
+        self.markdown = MarkdownStyler(self.buffer, self.editor, self.palette, self.queue_gutter)
 
     def text(self):
         return self.buffer.get_text(self.buffer.get_start_iter(), self.buffer.get_end_iter(), True)
@@ -465,6 +490,8 @@ class PerfectNote(Gtk.Application):
         return GLib.SOURCE_REMOVE
 
     def changed(self, *_):
+        if self.markdown is not None:
+            self.markdown.schedule()
         self.clear_marking()
         self.placeholder.set_visible(self.buffer.get_char_count() == 0)
         self.dirty = True

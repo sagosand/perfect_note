@@ -279,6 +279,7 @@ with tempfile.TemporaryDirectory(prefix='perfect-note-stamps-check-') as directo
     assert selected() == 'alpha\n\nbeta', 'Left from the first word returns to the segment'
     nav.hide()
     for instance in (app, app2, app3, nav):
+        instance.markdown.stop()
         instance.stop_theme()
         instance.window.destroy()
 print('PASS: migration, one stamp per paste, Unicode, position tracking, delete/undo/redo, autosave, restart, backups, errors, segment/word navigation, copy, delete, click, vertical/wrapped navigation, Tab cycling')
@@ -544,6 +545,7 @@ with tempfile.TemporaryDirectory(prefix='perfect-note-audit-') as directory:
         if app.gutter_source:
             GLib.source_remove(app.gutter_source)
             app.gutter_source = 0
+        app.markdown.stop()
         app.stop_theme()
         app.window.destroy()
 print(f'PASS: audit regressions, delayed clipboard, safe persistence, Unicode, grouped undo, and {cycles} randomized edit/undo/redo cycles')
@@ -600,5 +602,81 @@ with tempfile.TemporaryDirectory(prefix='perfect-note-theme-check-') as director
     assert themed.note_path.read_text() == before[0]
     themed.window.destroy()
 print('PASS: live dark/light themes, directory replacement, legacy colors, contrast, invalid themes, and editing-state preservation')
+
+from markdown_style import markdown_spans
+
+
+def styled_parts(text, kind):
+    return [text[start:end] for name, start, end in markdown_spans(text) if name == kind]
+
+
+assert styled_parts('# Heading\n## Smaller\n', 'h1') == ['# Heading']
+assert styled_parts('**bold** *italic* ~~old~~ ***both***', 'strong') == ['**bold**']
+assert styled_parts('**bold** *italic* ~~old~~ ***both***', 'em') == ['*italic*']
+assert styled_parts('**bold** *italic* ~~old~~ ***both***', 'strong_em') == ['***both***']
+assert styled_parts('- [x] Finished\n- [ ] Next', 'completed') == ['Finished']
+assert styled_parts('`**literal**` and **bold**', 'strong') == ['**bold**']
+assert styled_parts('``a ` tick``', 'code') == ['``a ` tick``']
+assert not styled_parts(r'\*literal\* snake_case_value', 'em')
+assert not styled_parts('https://example.org/a_b_c [link](https://example.org/a_b_c)', 'em')
+assert len(styled_parts('https://example.org/a_b_c [link](https://example.org/a_b_c)', 'link')) == 2
+assert styled_parts('🌿 **ÅÄÖ**', 'strong') == ['**ÅÄÖ**']
+assert not styled_parts('~~~python\n# not a heading\n```\n# still code', 'h1')
+assert styled_parts('~~~\n# code\n~~~\n# heading', 'h1') == ['# heading']
+assert not styled_parts('```\nhttps://example.org\n```', 'link')
+assert not styled_parts('####### plain', 'h6')
+
+with tempfile.TemporaryDirectory(prefix='perfect-note-markdown-check-') as directory:
+    root = Path(directory)
+    note = create(root)
+    sample = '# CAPS LOCK ÅÄÖ\n**Keep** *these* words.\n- [x] Done\n> A quote\n`literal **stars**`\nhttps://example.org'
+    note.insert_paste(sample)
+    note.save()
+    note.select_paste(0)
+    before = (note.text(), copy.deepcopy(note.pastes), len(note.history), note.history_position,
+              tuple(i.get_offset() for i in note.buffer.get_selection_bounds()), note.buffer.get_modified())
+    note.markdown.refresh()
+    after = (note.text(), copy.deepcopy(note.pastes), len(note.history), note.history_position,
+             tuple(i.get_offset() for i in note.buffer.get_selection_bounds()), note.buffer.get_modified())
+    assert after == before and not note.dirty, 'styling modified note or selection state'
+    assert note.note_path.read_text() == sample
+    def has_style(word, name):
+        return note.buffer.get_iter_at_offset(note.text().index(word)).has_tag(note.markdown.tags[name])
+    assert has_style('CAPS', 'h1') and has_style('Keep', 'strong') and has_style('these', 'em')
+    assert has_style('literal', 'code') and not has_style('stars', 'strong')
+    class MarkdownClipboard:
+        copied = None
+        def set(self, text):
+            self.copied = text
+    clipboard = MarkdownClipboard()
+    note.editor.get_clipboard = lambda: clipboard
+    note.copy_selection()
+    assert clipboard.copied == sample, 'copy changed Markdown source'
+    note.buffer.begin_user_action()
+    note.buffer.delete(note.buffer.get_start_iter(), note.buffer.get_iter_at_offset(2))
+    note.buffer.end_user_action()
+    note.markdown.refresh()
+    assert not has_style('CAPS', 'h1'), 'removed heading kept its style'
+    note.buffer.undo()
+    note.markdown.refresh()
+    assert note.text() == sample and note.pastes == before[1] and has_style('CAPS', 'h1')
+    note.buffer.redo()
+    note.markdown.refresh()
+    assert not has_style('CAPS', 'h1')
+    note.buffer.undo()
+    light = root / 'light.toml'
+    light.write_text('background = "#fafafa"\nforeground = "#202020"\naccent = "#b0c0ff"\ngreen = "#c0ffc0"\n')
+    note.palette_paths = (light,)
+    note.refresh_theme()
+    for key in ('heading', 'link', 'marker'):
+        assert contrast(note.palette[key], note.palette['background']) >= 5
+    assert contrast(note.palette['code'], note.palette['code_background']) >= 5
+    expected = Gdk.RGBA()
+    expected.parse(note.palette['heading'])
+    assert note.markdown.tags['h1'].get_property('foreground-rgba').equal(expected)
+    note.shutdown()
+    assert note.markdown.source == 0 and note.note_path.read_text() == sample
+    note.window.destroy()
+print('PASS: Markdown styles, literal code/escapes, Unicode offsets, theme contrast, exact copy/save, selection, and undo/redo')
 
 assert not callback_errors, callback_errors

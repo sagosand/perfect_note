@@ -71,6 +71,14 @@ Edits save after 150 ms of inactivity and immediately when hiding. The complete 
 
 Saving is silent. If saving fails, the window stays open with an error; Ctrl+S retries. A normal termination request also waits for saving to succeed. Invalid saved data is left untouched and opened read-only; backup-write failures do not prevent reading a valid note. This is a text scratchpad, with no clipboard monitoring or cloud service.
 
+## Markdown and color
+
+Write Markdown directly in the note. Headings (`#` through `######`) gain color and size; `**bold**`, `*italic*`, `***both***`, and `~~strikethrough~~` gain emphasis. Quotes, list markers, checkboxes, links, and plain HTTP(S) URLs are colored too. Checked tasks (`- [x]`) are struck through. Inline backticks and fenced code blocks use a monospace font with a subtle background.
+
+Formatting updates as you type or paste. All Markdown characters remain visible and editable; copying and saving preserve the exact source text. Heading, link, code, and list colors follow your Omarchy palette, adjusted for readable contrast in dark and light themes. Plain text stays plain.
+
+This is lightweight source highlighting: inline styles are single-line, code fences begin at the start of a line with up to three spaces, and tables, reference links, and deeply nested Markdown are not specially rendered. Links and images are shown as text; the app does not open URLs or fetch remote content. No preview mode or extra dependency is needed.
+
 ## Appearance
 
 Perfect Note follows your active Omarchy palette automatically, including light themes. Background, text, timestamps, borders, cursor, and selections update within about two seconds of a theme change, even while the window is hidden. No hook or restart is needed. Selection text and small labels get a contrast fallback when needed.
