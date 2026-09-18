@@ -6,3 +6,10 @@ __pycache__/
 note.json*
 note.txt*
 .venv/
+.env
+.env.*
+!.env.example
+.ssh/
+*.pem
+*.key
+*.p12
